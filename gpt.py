@@ -25,24 +25,33 @@ def run():
         # Wait for prompt textarea
         page.wait_for_selector("#prompt-textarea", timeout=20000)
 
-        # Type message
-        page.fill("#prompt-textarea", "cccdcd")
+        print("You can now start chatting. Type 'exit' to quit.\n")
 
-        # Send message
-        page.keyboard.press("Enter")
+        while True:
+            # Take input from the user
+            user_input = input("You: ")
+            if user_input.lower() in ["exit", "quit"]:
+                break
 
-        # Wait for first response block
-        page.wait_for_selector("div.markdown", timeout=30000)
+            # Clear the textarea and type the message
+            page.fill("#prompt-textarea", user_input)
 
-        # Wait for streaming to finish (basic way)
-        time.sleep(6)
+            # Send message
+            page.keyboard.press("Enter")
 
-        # Get latest response
-        responses = page.query_selector_all("div.markdown")
-        latest_response = responses[-1].inner_text()
+            # Wait for the response container
+            page.wait_for_selector("div.markdown", timeout=30000)
 
-        print("\n=== RESPONSE ===\n")
-        print(latest_response)
+            # Wait for streaming to finish (basic way)
+            time.sleep(5)
+
+            # Get latest response
+            responses = page.query_selector_all("div.markdown")
+            if responses:
+                latest_response = responses[-1].inner_text()
+                print("\nChatGPT:", latest_response, "\n")
+            else:
+                print("No response found.\n")
 
         browser.close()
 
