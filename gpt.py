@@ -9,9 +9,9 @@ def run():
 
         page.goto("https://chatgpt.com/")
         page.wait_for_load_state("domcontentloaded")
-        time.sleep(3)  # wait for popup
+        time.sleep(3)
 
-        # Try closing login popup
+        # Close login popup if present
         try:
             page.locator("button[aria-label='Close'], button:has(svg)").first.click(timeout=5000)
             print("Login popup closed.")
@@ -22,7 +22,7 @@ def run():
         page.wait_for_selector("#prompt-textarea", timeout=20000)
         print("You can now start chatting. Type 'exit' to quit.\n")
 
-        # Track how many markdown divs already exist
+        # Track known markdown divs
         known_div_count = len(page.query_selector_all("div.markdown"))
 
         while True:
@@ -30,11 +30,11 @@ def run():
             if user_input.lower() in ["exit", "quit"]:
                 break
 
-            # Type input and send
+            # Send input
             page.fill("#prompt-textarea", user_input)
             page.keyboard.press("Enter")
 
-            # Wait until a new markdown div appears
+            # Wait for new markdown div
             timeout = 30
             elapsed = 0
             while True:
@@ -47,28 +47,37 @@ def run():
                     print("Timeout waiting for response.")
                     break
 
-            # Update known_div_count and get the new div
+            # Get new divs
             all_divs = page.query_selector_all("div.markdown")
             new_divs = all_divs[known_div_count:]
             known_div_count = len(all_divs)
 
-            # Stream new content in real time
+            # Stream content by element type
             for div in new_divs:
-                printed_length = 0
-                stable_polls = 0
+                printed_elements = set()
                 while True:
-                    current_text = div.inner_text()
-                    if len(current_text) > printed_length:
-                        # Print only the new portion
-                        print(current_text[printed_length:], end='', flush=True)
-                        printed_length = len(current_text)
-                        stable_polls = 0  # reset counter when new text appears
+                    elements = div.query_selector_all("p, pre, code")
+                    new_elements = []
+                    for el in elements:
+                        text = el.inner_text()
+                        if text not in printed_elements:
+                            new_elements.append((el, text))
+                            printed_elements.add(text)
+
+                    if new_elements:
+                        for el, text in new_elements:
+                            tag = el.evaluate("el => el.tagName.toLowerCase()")
+                            if tag == "pre" or tag == "code":
+                                # Wrap code blocks in triple backticks
+                                print(f"\n```\n{text}\n```\n")
+                            else:
+                                # Normal paragraph
+                                print(text + "\n")
                     else:
-                        stable_polls += 1
-                        if stable_polls >= 5:  # ~1 second of no growth
-                            print("\n")  # finish line
+                        # If all elements printed, check if done streaming
+                        if len(elements) == len(printed_elements):
                             break
-                    time.sleep(0.2)
+                    time.sleep(0.3)
 
         browser.close()
 
