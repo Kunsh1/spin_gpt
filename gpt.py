@@ -1,28 +1,53 @@
 from playwright.sync_api import sync_playwright
 import time
+import os
+import pickle
+
+# Path to save/load cookies
+COOKIES_FILE = "chatgpt_cookies.pkl"
+
+def save_cookies(context):
+    cookies = context.cookies()
+    with open(COOKIES_FILE, "wb") as f:
+        pickle.dump(cookies, f)
+
+def load_cookies(context):
+    if os.path.exists(COOKIES_FILE):
+        with open(COOKIES_FILE, "rb") as f:
+            cookies = pickle.load(f)
+            context.add_cookies(cookies)
+        return True
+    return False
 
 def run():
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)  # set True for headless
-        context = browser.new_context()
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+        )
         page = context.new_page()
-
         page.goto("https://chatgpt.com/")
-        page.wait_for_load_state("domcontentloaded")
-        time.sleep(3)
+        page.wait_for_load_state("networkidle")
+        time.sleep(3)  # give React time to render
 
-        # Close login popup if present
-        try:
-            page.locator("button[aria-label='Close'], button:has(svg)").first.click(timeout=5000)
-            print("Login popup closed.")
-        except:
-            pass
+        # Load cookies if present
+        if load_cookies(context):
+            page.reload()
+            page.wait_for_load_state("networkidle")
+            print("Loaded saved login cookies.")
+        else:
+            print("Please log in manually in the browser window that opened.")
+            page.wait_for_selector("#prompt-textarea", timeout=0)  # wait indefinitely for login
+            save_cookies(context)
+            print("Login detected. Cookies saved for future sessions.")
 
-        # Wait for textarea
-        page.wait_for_selector("#prompt-textarea", timeout=20000)
-        print("You can now start chatting. Type 'exit' to quit.\n")
+        # Wait for the prompt textarea to be attached and scroll into view
+        page.wait_for_selector("#prompt-textarea", state="attached", timeout=30000)
+        page.locator("#prompt-textarea").scroll_into_view_if_needed()
+        print("\nYou can now start chatting. Type 'exit' to quit.\n")
 
-        # Track known markdown divs
         known_div_count = len(page.query_selector_all("div.markdown"))
 
         while True:
@@ -75,11 +100,12 @@ def run():
                         # Detect if code block
                         code_blocks = div.query_selector_all("pre, code")
                         if code_blocks:
-                            # Try to print each new code block separately
                             for code in code_blocks:
+                                if not hasattr(code, "printed_length"):
+                                    code.printed_length = 0
                                 code_text = code.inner_text()
-                                if len(code_text) > getattr(code, "printed_length", 0):
-                                    new_code = code_text[getattr(code, "printed_length", 0):]
+                                if len(code_text) > code.printed_length:
+                                    new_code = code_text[code.printed_length:]
                                     lang = code.get_attribute("class")
                                     if lang:
                                         lang = lang.split("language-")[-1].split()[0]
