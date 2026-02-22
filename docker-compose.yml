@@ -1,0 +1,12 @@
+services:
+  chatgpt-api:
+    build: .
+    container_name: chatgpt-worker
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # This links the ./data folder on your server to /app/data inside the container
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
